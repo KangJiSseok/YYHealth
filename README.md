@@ -9,3 +9,22 @@ KDRIs의 총에너지요구량(EER) 공식과 에너지 적정비율(AMDR)을 �
 수치는 규칙 기반 엔진으로 산출하고
 권장 근거는 KDRIs, JKMA, 국내 질환별 진료지침을 활용한
 RAG(Retrieval-Augmented Generation) 파이프라인을 통해 제공한다.
+
+---
+# 초기 세팅
+```
+python3.11 --version
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install fastapi uvicorn
+pip freeze > requirements.txt
+```
+
+# 서버 실행
+```
+uvicorn app.main:app --reload
+```
+
+### http://localhost:8000/hello 접속 
+
+
