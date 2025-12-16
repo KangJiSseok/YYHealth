@@ -18,12 +18,20 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install fastapi uvicorn
 pip freeze > requirements.txt
+pip install -r requirements.txt
+```
+
+# test
+```
+pytest
 ```
 
 # 서버 실행
 ```
 uvicorn app.main:app --reload
 ```
+
+
 
 ### http://localhost:8000/hello 접속 
 
