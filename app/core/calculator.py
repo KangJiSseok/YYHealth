@@ -1,4 +1,5 @@
 from app.core.amdr import MacronutrientRatios, calculate_macronutrients, default_ratios
+from app.core.disease_mapping import normalize_diseases
 from app.core.disease_rules import apply_disease_adjustments
 from app.core.eer import EERDetails, calculate_eer_life_stage
 from app.core.pa import resolve_pa
@@ -34,11 +35,13 @@ def calculate_nutrition(survey: SurveyRequest) -> NutritionResult:
 
     base_carb_ratios: MacronutrientRatios = default_ratios()["carbohydrate"]
 
-    adjusted_eer, carb_ratios = apply_disease_adjustments(
-        eer=details.value, carb_ratios=base_carb_ratios, diseases=survey.diseases
+    normalized_diseases = normalize_diseases(survey.diseases)
+
+    adjusted_eer, carb_ratios, fat_ratios = apply_disease_adjustments(
+        eer=details.value, carb_ratios=base_carb_ratios, diseases=normalized_diseases
     )
 
-    macros = calculate_macronutrients(adjusted_eer, carb_ratios)
+    macros = calculate_macronutrients(adjusted_eer, carb_ratios, fat_ratios)
 
     macronutrients = {}
     for name, profile in macros.items():

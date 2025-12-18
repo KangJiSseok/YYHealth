@@ -1,31 +1,27 @@
 from typing import Iterable
 
-from app.core.amdr import MacronutrientRatios
+from app.core.amdr import FAT_MIN_RATIO, FAT_MAX_RATIO, MacronutrientRatios
 
-OBESITY_EER_DEFICIT_FACTOR = 0.90
-DIABETES_CARB_MAX_RATIO = 0.60
-
-
-def apply_obesity_deficit(eer: float) -> float:
-    return eer * OBESITY_EER_DEFICIT_FACTOR
-
-
-def apply_diabetes_carb_limit(carb_ratios: MacronutrientRatios) -> MacronutrientRatios:
-    new_max = min(carb_ratios.max_ratio, DIABETES_CARB_MAX_RATIO)
-    return MacronutrientRatios(min_ratio=carb_ratios.min_ratio, max_ratio=new_max)
+# Evidence-backed adjustment: dyslipidemia/ASCVD -> lower total fat upper bound.
+DYSLIPIDEMIA_FAT_MAX_RATIO = 0.25  # derived from dyslipidemia/ASCVD guidance to reduce total fat upper limit
 
 
 def apply_disease_adjustments(
-    eer: float, carb_ratios: MacronutrientRatios, diseases: Iterable[str]
-) -> tuple[float, MacronutrientRatios]:
+    eer: float,
+    carb_ratios: MacronutrientRatios,
+    diseases: Iterable[str],
+    fat_ratios: MacronutrientRatios | None = None,
+) -> tuple[float, MacronutrientRatios, MacronutrientRatios]:
     normalized = {disease.lower() for disease in diseases}
     adjusted_eer = eer
     adjusted_carb_ratios = carb_ratios
+    adjusted_fat_ratios = fat_ratios or MacronutrientRatios(FAT_MIN_RATIO, FAT_MAX_RATIO)
 
-    if "obesity" in normalized:
-        adjusted_eer = apply_obesity_deficit(adjusted_eer)
+    if "dyslipidemia" in normalized or "ascvd" in normalized:
+        new_fat_max = min(adjusted_fat_ratios.max_ratio, DYSLIPIDEMIA_FAT_MAX_RATIO)
+        adjusted_fat_ratios = MacronutrientRatios(
+            min_ratio=adjusted_fat_ratios.min_ratio,
+            max_ratio=new_fat_max,
+        )
 
-    if "diabetes" in normalized:
-        adjusted_carb_ratios = apply_diabetes_carb_limit(adjusted_carb_ratios)
-
-    return adjusted_eer, adjusted_carb_ratios
+    return adjusted_eer, adjusted_carb_ratios, adjusted_fat_ratios

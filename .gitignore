@@ -86,3 +86,48 @@ test-results/
 ############################
 docker-compose.override.yml
 
+
+############################
+# Project Generated Data
+############################
+data/pdfs/
+data/chunks.jsonl
+
+############################
+# Vector DB / Qdrant
+############################
+qdrant_storage/
+
+############################
+# Logs / Runtime
+############################
+logs/
+*.log
+
+
+# JetBrains local history
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries/
+.idea/**/shelf/
+
+# Local experiment logs
+*.out
+*.err
+
+# Runtime artifacts
+*.pid
+*.sock
+
+# PDF processing artifacts
+data/chunks/
+data/tmp/
+data/intermediate/
+
+# RAG / Embedding outputs
+data/embeddings/
+data/vectors/
+data/*.jsonl
+data/*.parquet
+data/*.npy

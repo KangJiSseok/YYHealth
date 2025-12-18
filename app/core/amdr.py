@@ -47,11 +47,15 @@ def _ratio_to_grams(eer: float, ratio: float, kcal_per_g: float) -> float:
     return (eer * ratio) / kcal_per_g
 
 
-def calculate_macronutrients(eer: float, carb_ratios: MacronutrientRatios) -> dict:
+def calculate_macronutrients(
+    eer: float,
+    carb_ratios: MacronutrientRatios,
+    fat_ratios: MacronutrientRatios | None = None,
+) -> dict:
     ratios = {
         "carbohydrate": carb_ratios,
         "protein": MacronutrientRatios(PROTEIN_MIN_RATIO, PROTEIN_MAX_RATIO),
-        "fat": MacronutrientRatios(FAT_MIN_RATIO, FAT_MAX_RATIO),
+        "fat": fat_ratios or MacronutrientRatios(FAT_MIN_RATIO, FAT_MAX_RATIO),
     }
     kcal_map = {
         "carbohydrate": CARB_KCAL_PER_G,
