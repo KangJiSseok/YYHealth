@@ -13,7 +13,7 @@ from app.schemas.evidence import NutritionWithEvidence
 from app.core.disease_mapping import normalize_diseases
 from app.core.rag_search import retrieve_evidence, retrieve_general
 from app.schemas.survey import SurveyRequest
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, UserInfo
 
 app = FastAPI()
 # 로컬 .env 자동 로드 (uvicorn 환경변수 미설정 시 대비)
@@ -46,7 +46,7 @@ def compute_nutrition_with_evidence(survey: SurveyRequest) -> NutritionWithEvide
 @app.post("/chat", response_model=ChatResponse)
 def chat(query: ChatRequest) -> ChatResponse:
     diseases = normalize_diseases(query.diseases or [])
-    answer = _chat_answer_direct(query.message, diseases)
+    answer = _chat_answer_direct(query.message, diseases, query.user_info)
     return ChatResponse(answer=answer, evidence=[], conversation_id=query.conversation_id)
 
 
@@ -139,16 +139,11 @@ def _summarize_evidence(evidence: list) -> dict[str, str]:
     return summaries
 
 
-def _chat_answer_direct(question: str, diseases: list[str]) -> str:
+def _chat_answer_direct(question: str, diseases: list[str], user_info: UserInfo | None) -> str:
     api_key = os.getenv("LLM_API_KEY")
     model = os.getenv("LLM_MODEL", "gpt-4o-mini")
     endpoint = os.getenv("LLM_ENDPOINT", "https://api.openai.com/v1/chat/completions")
-
-    # 질환 리스트 질의 처리
-    if "질환" in question and ("무엇" in question or "뭐" in question or "가지고" in question):
-        if diseases:
-            return "등록된 질환: " + ", ".join(diseases) + ". 각 질환에 맞춰 포화지방을 줄이고, 정제 탄수화물 대신 섬유질이 많은 식품을 선택하며, 단백질은 권장 범위에서 적정 섭취하세요."
-        return "회원 정보에 질환이 등록되어 있지 않습니다. 가입 시 질환을 추가하면 더 맞춤형 안내가 가능합니다."
+    user_context = _format_user_context(user_info, diseases)
 
     if api_key:
         try:
@@ -158,6 +153,7 @@ def _chat_answer_direct(question: str, diseases: list[str]) -> str:
                 "- 쉬운 한국어 사용\n"
                 "- 숫자/비율은 근거가 있을 때만 명시, 없으면 일반적 권장 범위 언급\n"
                 "- 포화지방/트랜스지방 제한, 섬유질 많은 탄수화물, 적정 단백질 섭취를 기본 가이드로 삼으세요.\n"
+                f"사용자 정보: {user_context}\n"
                 f"질문: {question}\n"
             )
             resp = httpx.post(
@@ -184,7 +180,40 @@ def _chat_answer_direct(question: str, diseases: list[str]) -> str:
 
     # fallback: LLM 미사용 시 질문을 반영한 기본 안내
     base = "포화·트랜스지방을 줄이고, 섬유질이 많은 탄수화물과 충분한 단백질을 균형 있게 섭취하세요."
-    return f"질문을 확인했어요: \"{question}\". {base} 더 구체적인 목표나 식사 정보를 주시면 맞춤 조언을 드릴 수 있어요."
+    profile_hint = f" (추가 정보: {user_context})" if user_context else ""
+    return f"질문을 확인했어요: \"{question}\". {base} 더 구체적인 목표나 식사 정보를 주시면 맞춤 조언을 드릴 수 있어요.{profile_hint}"
+
+
+def _format_user_context(user_info: UserInfo | None, diseases: list[str]) -> str:
+    parts: list[str] = []
+    if diseases:
+        parts.append("질환: " + ", ".join(diseases))
+    if user_info:
+        body: list[str] = []
+        if user_info.height:
+            body.append(f"키 {user_info.height}cm")
+        if user_info.weight:
+            body.append(f"몸무게 {user_info.weight}kg")
+        if user_info.birthdate:
+            body.append(f"생년월일 {user_info.birthdate}")
+        if user_info.kcal:
+            body.append(f"목표열량 {user_info.kcal}kcal")
+        macro_parts: list[str] = []
+        if user_info.protein:
+            macro_parts.append(f"단백질 {user_info.protein}g")
+        if user_info.protein_min or user_info.protein_max:
+            macro_parts.append(
+                f"단백질 범위 {user_info.protein_min or '?'}~{user_info.protein_max or '?'}g"
+            )
+        if user_info.fat:
+            macro_parts.append(f"지방 {user_info.fat}g")
+        if user_info.fat_min or user_info.fat_max:
+            macro_parts.append(f"지방 범위 {user_info.fat_min or '?'}~{user_info.fat_max or '?'}g")
+        if macro_parts:
+            body.append(" / ".join(macro_parts))
+        if body:
+            parts.append(" ".join(body))
+    return "; ".join(parts) if parts else "제공된 추가 정보 없음"
 
 
 def _clean_snippet(text: str) -> str:
