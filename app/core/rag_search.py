@@ -101,6 +101,33 @@ def _rerank(points, query: str):
     return sorted(points, key=score, reverse=True)
 
 
+def retrieve_general(query: str, limit: int = 3) -> List[dict]:
+    env = _get_env()
+    client = QdrantClient(url=env["qdrant_url"], api_key=env["qdrant_api_key"])
+    vector = _embed(query)
+    points = client.search(
+        collection_name="nutrition_rag_chunks",
+        query_vector=vector,
+        limit=limit,
+        with_payload=True,
+    )
+    reranked = _rerank(points, query)[:limit]
+    evidence: List[dict] = []
+    for p in reranked:
+        payload = p.payload or {}
+        evidence.append(
+            {
+                "disease": payload.get("disease"),
+                "source_pdf": payload.get("source_pdf"),
+                "page_number": payload.get("page_number"),
+                "chunk_type": payload.get("chunk_type"),
+                "text": payload.get("text"),
+                "score": p.score,
+            }
+        )
+    return evidence
+
+
 def retrieve_evidence(diseases: List[str], limit_per_disease: int = 2) -> List[dict]:
     env = _get_env()
     client = QdrantClient(url=env["qdrant_url"], api_key=env["qdrant_api_key"])

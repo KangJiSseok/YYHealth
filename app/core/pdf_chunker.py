@@ -246,10 +246,20 @@ def _strip_reference_noise(text: str) -> str:
     return cleaned
 
 
-def extract_layout_blocks(pdf: pdfplumber.PDF, source_pdf: str) -> List[LayoutBlock]:
+def extract_layout_blocks(pdf: pdfplumber.PDF, source_pdf: str, page_ranges: Optional[List[tuple]] = None) -> List[LayoutBlock]:
     print(f"[pdf_chunker] Extracting layout blocks from: {source_pdf}")
     blocks: List[LayoutBlock] = []
-    for page_index, page in enumerate(pdf.pages):
+    page_indices = range(len(pdf.pages))
+    if page_ranges:
+        selected = set()
+        for start, end in page_ranges:
+            for idx in range(start - 1, end):
+                if 0 <= idx < len(pdf.pages):
+                    selected.add(idx)
+        page_indices = sorted(selected)
+
+    for page_index in page_indices:
+        page = pdf.pages[page_index]
         page_number = page_index + 1
 
         # Tables – skipped per requirement to exclude tables/images
@@ -341,15 +351,15 @@ def build_chunks(blocks: Iterable[LayoutBlock], source_pdf: str) -> List[Dict]:
 
         if block.chunk_type == "figure_caption":
             text_parts = _chunk_text(
-                block.text, min_tokens=80, max_tokens=150, overlap_tokens=0, encoder=encoder
+                block.text, min_tokens=100, max_tokens=170, overlap_tokens=0, encoder=encoder
             )
         elif block.chunk_type == "guideline_recommendation_box":
             text_parts = _chunk_text(
-                block.text, min_tokens=80, max_tokens=180, overlap_tokens=0, encoder=encoder
+                block.text, min_tokens=100, max_tokens=200, overlap_tokens=0, encoder=encoder
             )
         else:
             text_parts = _chunk_text(
-                block.text, min_tokens=120, max_tokens=220, overlap_tokens=30, encoder=encoder
+                block.text, min_tokens=200, max_tokens=300, overlap_tokens=50, encoder=encoder
             )
         for part in text_parts:
             chunk = _base_chunk(block, source_pdf)
@@ -459,7 +469,7 @@ def attach_metadata(chunks: List[Dict]) -> List[Dict]:
     return filtered
 
 
-def process_pdf(path: str) -> List[Dict]:
+def process_pdf(path: str, page_ranges: Optional[List[tuple]] = None) -> List[Dict]:
     """
     Convenience runner: load PDF, extract blocks, build chunks, attach metadata.
     """
@@ -468,6 +478,6 @@ def process_pdf(path: str) -> List[Dict]:
     pdf_path = Path(path)
     pdf = load_pdf(str(pdf_path))
     source_pdf = pdf_path.name
-    blocks = extract_layout_blocks(pdf, source_pdf)
+    blocks = extract_layout_blocks(pdf, source_pdf, page_ranges=page_ranges)
     chunks = build_chunks(blocks, source_pdf)
     return attach_metadata(chunks)

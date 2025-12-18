@@ -11,6 +11,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 PDF_DIR = BASE_DIR / "data" / "pdfs"
 CHUNKS_PATH = BASE_DIR / "data" / "chunks.jsonl"
 
+# 특정 PDF별로 처리할 페이지 범위를 지정 (start, end 포함)
+PAGE_OVERRIDES = {
+    "2020korean.pdf": [(40, 66), (82, 106), (118, 134), (146, 187), (202, 231)],
+}
+
 
 def run_all_pdfs() -> List[Dict]:
     """
@@ -37,7 +42,8 @@ def run_all_pdfs() -> List[Dict]:
         print(f"[runner] Processing: {pdf_path}")
 
         try:
-            chunks = process_pdf(pdf_path)
+            page_ranges = PAGE_OVERRIDES.get(filename)
+            chunks = process_pdf(pdf_path, page_ranges=page_ranges)
             all_chunks.extend(chunks)
             print(f"[runner] {filename}: {len(chunks)} chunks")
         except Exception as e:

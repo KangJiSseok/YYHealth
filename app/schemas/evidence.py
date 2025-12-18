@@ -17,3 +17,4 @@ class NutritionWithEvidence(BaseModel):
     evidence: List[EvidenceItem]
     rationale: List[str] = []
     summaries: Dict[str, str] = {}
+    calc_summaries: Dict[str, str] = {}
