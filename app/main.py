@@ -12,6 +12,7 @@ from app.schemas.nutrition import NutritionResult
 from app.schemas.evidence import NutritionWithEvidence
 from app.core.disease_mapping import normalize_diseases
 from app.core.rag_search import retrieve_evidence, retrieve_general
+from app.core.langchain_rag import rag_chat_answer
 from app.schemas.survey import SurveyRequest
 from app.schemas.chat import ChatRequest, ChatResponse, UserInfo
 
@@ -46,7 +47,9 @@ def compute_nutrition_with_evidence(survey: SurveyRequest) -> NutritionWithEvide
 @app.post("/chat", response_model=ChatResponse)
 def chat(query: ChatRequest) -> ChatResponse:
     diseases = normalize_diseases(query.diseases or [])
-    answer = _chat_answer_direct(query.message, diseases, query.user_info)
+    answer = rag_chat_answer(query.message, diseases, query.user_info) or _chat_answer_direct(
+        query.message, diseases, query.user_info
+    )
     return ChatResponse(answer=answer, evidence=[], conversation_id=query.conversation_id)
 
 
