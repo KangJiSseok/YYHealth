@@ -12,7 +12,9 @@ from app.schemas.nutrition import NutritionResult
 from app.schemas.evidence import NutritionWithEvidence
 from app.core.disease_mapping import normalize_diseases
 from app.core.rag_search import retrieve_evidence, retrieve_general
+from app.core.report_analysis import analyze_report
 from app.core.langchain_rag import rag_chat_answer
+from app.schemas.report import ReportAnalysisRequest, ReportAnalysisResponse
 from app.schemas.survey import SurveyRequest
 from app.schemas.chat import ChatRequest, ChatResponse, UserInfo
 
@@ -47,10 +49,18 @@ def compute_nutrition_with_evidence(survey: SurveyRequest) -> NutritionWithEvide
 @app.post("/chat", response_model=ChatResponse)
 def chat(query: ChatRequest) -> ChatResponse:
     diseases = normalize_diseases(query.diseases or [])
-    answer = rag_chat_answer(query.message, diseases, query.user_info) or _chat_answer_direct(
-        query.message, diseases, query.user_info
-    )
-    return ChatResponse(answer=answer, evidence=[], conversation_id=query.conversation_id)
+    rag_result = rag_chat_answer(query.message, diseases, query.user_info)
+    if rag_result:
+        answer, evidence = rag_result
+    else:
+        answer = _chat_answer_direct(query.message, diseases, query.user_info)
+        evidence = []
+    return ChatResponse(answer=answer, evidence=evidence, conversation_id=query.conversation_id)
+
+
+@app.post("/report_analysis", response_model=ReportAnalysisResponse)
+def report_analysis(payload: ReportAnalysisRequest) -> ReportAnalysisResponse:
+    return analyze_report(payload)
 
 
 def _build_rationale(calc: NutritionResult, diseases: list[str]) -> list[str]:

@@ -110,7 +110,34 @@ def _to_context(docs_with_scores: List[Tuple]) -> str:
     return "\n\n".join(snippets)
 
 
-def rag_chat_answer(question: str, diseases: List[str], user_info: Optional[UserInfo]) -> Optional[str]:
+def _to_evidence(docs_with_scores: List[Tuple]) -> list[dict]:
+    evidences: list[dict] = []
+    for doc, score in docs_with_scores:
+        meta = doc.metadata or {}
+        source = (
+            meta.get("source")
+            or meta.get("source_pdf")
+            or meta.get("source_document")
+            or meta.get("source_file")
+        )
+        page = meta.get("page") or meta.get("page_number") or meta.get("page_no")
+        evidences.append(
+            {
+                "source": source,
+                "page": page,
+                "chunk_type": meta.get("chunk_type"),
+                "disease_tags": meta.get("disease_tags"),
+                "score": score,
+                "text": doc.page_content,
+                "snippet": (doc.page_content[:200] + "...") if len(doc.page_content) > 200 else doc.page_content,
+            }
+        )
+    return evidences
+
+
+def rag_chat_answer(
+    question: str, diseases: List[str], user_info: Optional[UserInfo]
+) -> Optional[Tuple[str, List[dict]]]:
     """
     LangChain 기반 RAG:
     - Qdrant에서 유사도 검색 (k=4, score_threshold 사용)
@@ -119,13 +146,45 @@ def rag_chat_answer(question: str, diseases: List[str], user_info: Optional[User
     try:
         vectorstore = _vectorstore()
         query = _build_query(question, diseases)
-        docs_with_scores = vectorstore.similarity_search_with_score(query, k=4)
+
+        # 1) 질환 태그 우선 필터 검색
+        base_filter = None
+        if diseases:
+            base_filter = {"must": [{"key": "disease_tags", "match": {"any": diseases}}]}
+        docs_with_scores = vectorstore.similarity_search_with_score(query, k=6, filter=base_filter)
         filtered = [(doc, score) for doc, score in docs_with_scores if score is not None and score >= 0.45]
+
+        # 2~4) chunk_type별 보강 검색 (guideline/numeric) + 일반 검색을 추가로 수행해 최대 4회 보강
+        for ctype, k, thresh in [
+            ("guideline_recommendation", 4, 0.40),
+            ("numeric_evidence", 4, 0.38),
+            (None, 4, 0.42),  # 필터 없는 일반 보강
+        ]:
+            qfilter = None
+            if ctype:
+                qfilter = {"must": [{"key": "chunk_type", "match": {"value": ctype}}]}
+                if base_filter:
+                    qfilter["must"].append({"key": "disease_tags", "match": {"any": diseases}})
+            elif base_filter:
+                qfilter = base_filter
+            extra = vectorstore.similarity_search_with_score(query, k=k, filter=qfilter)
+            filtered.extend([(d, s) for d, s in extra if s is not None and s >= thresh])
+
+        # 동일 포인트(id) 중복 제거 (여러 검색 라운드에 걸쳐 반환될 수 있음)
+        dedup: dict = {}
+        for doc, score in filtered:
+            doc_id = getattr(doc, "id", None) or getattr(doc.metadata, "get", lambda k, d=None: None)("id")
+            key = doc_id or (doc.page_content[:50], tuple(sorted((doc.metadata or {}).items())))
+            prev = dedup.get(key)
+            if prev is None or (score or 0) > (prev[1] or 0):
+                dedup[key] = (doc, score)
+        filtered = sorted(dedup.values(), key=lambda x: x[1], reverse=True)[:6]
         if not filtered:
             return None
 
         profile = _format_user_profile(user_info, diseases)
         context = _to_context(filtered)
+        evidence = _to_evidence(filtered)
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -142,15 +201,17 @@ def rag_chat_answer(question: str, diseases: List[str], user_info: Optional[User
                     "사용자 정보: {profile}\n"
                     "질문: {question}\n"
                     "검색된 근거:\n{context}\n"
+                    "규칙:\n"
+                    "- 근거에 나온 숫자/비율만 사용, 새로운 숫자는 만들지 말 것\n"
+                    "- 근거가 부족하면 추가 질문을 유도\n"
                     "위 근거를 토대로 짧게 답변하세요.",
                 ),
             ]
         )
 
         chain = prompt | _llm() | StrOutputParser()
-        return chain.invoke({"question": question, "context": context, "profile": profile})
+        answer = chain.invoke({"question": question, "context": context, "profile": profile})
+        return answer, evidence
     except Exception as e:  # pragma: no cover - 방어적 로깅
         logger.warning("LangChain RAG chat failed: %s", e)
         return None
-
-
