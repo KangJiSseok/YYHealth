@@ -1,5 +1,6 @@
 import json
 import os
+import hashlib
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence
 
@@ -32,6 +33,23 @@ def load_chunks(path: Path) -> List[Dict]:
             if line.strip():
                 chunks.append(json.loads(line))
     return chunks
+
+
+def dedup_chunks(chunks: List[Dict]) -> List[Dict]:
+    """텍스트 해시로 중복 청크를 제거한다."""
+    seen = set()
+    result: List[Dict] = []
+    for c in chunks:
+        text = c.get("text", "")
+        norm = " ".join(text.split()).strip().lower()
+        h = hashlib.sha1(norm.encode("utf-8")).hexdigest()
+        if h in seen:
+            continue
+        seen.add(h)
+        result.append(c)
+    if len(result) != len(chunks):
+        print(f"[embed_upsert] Deduped {len(chunks)} -> {len(result)} chunks (by text hash)")
+    return result
 
 
 def _batch(seq: Sequence, size: int):
@@ -132,7 +150,7 @@ def run() -> None:
     if not CHUNKS_PATH.exists():
         raise RuntimeError(f"Chunks file not found: {CHUNKS_PATH}")
 
-    chunks = load_chunks(CHUNKS_PATH)
+    chunks = dedup_chunks(load_chunks(CHUNKS_PATH))
     if not chunks:
         print("[embed_upsert] No chunks to upsert.")
         return

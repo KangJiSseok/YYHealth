@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     conversation_id: Optional[int] = Field(default=None, alias="conversationId")
     answer: str
+    # LLM이 참고한 근거 목록 (PDF source, page 등을 포함)
     evidence: List[dict] = []
 
     class Config:
